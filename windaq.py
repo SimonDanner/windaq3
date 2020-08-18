@@ -10,6 +10,8 @@ Python 3 Version
 #!/usr/bin/python
 import struct
 import datetime
+import numpy as np
+import pandas as pd
 
 class windaq(object):
     '''
@@ -35,15 +37,15 @@ class windaq(object):
         
         ''' Read Header Info '''
         if (struct.unpack_from(B, self._fcontents, 1)[0]):                                              # max channels >= 144
-            self.nChannels      = (struct.unpack_from(B, self._fcontents, 0)[0])                        # number of channels is element 1
+            self.nChannels      = int(struct.unpack_from(B, self._fcontents, 0)[0])                        # number of channels is element 1
         else:
-            self.nChannels      = (struct.unpack_from(B, self._fcontents, 0)[0]) & 31                   # number of channels is element 1 mask bit 5
+            self.nChannels      = int(struct.unpack_from(B, self._fcontents, 0)[0]) & 31                   # number of channels is element 1 mask bit 5
         
         self._hChannels     = struct.unpack_from(B,  self._fcontents, 4)[0]                             # offset in bytes from BOF to header channel info tables
         self._hChannelSize  = struct.unpack_from(B,  self._fcontents, 5)[0]                             # number of bytes in each channel info entry
         self._headSize      = struct.unpack_from(I,  self._fcontents, 6)[0]                             # number of bytes in data file header
         self._dataSize      = struct.unpack_from(UL, self._fcontents, 8)[0]                             # number of ADC data bytes in file excluding header
-        self.nSample        = (self._dataSize/(2*self.nChannels))                                       # number of samples per channel
+        self.nSample        = int(self._dataSize/(2*self.nChannels))                                       # number of samples per channel
         self._trailerSize   = struct.unpack_from(UL, self._fcontents,12)[0]                             # total number of event marker, time and date stamp, and event marker commet pointer bytes in trailer
         self._annoSize      = struct.unpack_from(UI, self._fcontents, 16)[0]                            # toatl number of usr annotation bytes including 1 null per channel
         self.timeStep       = struct.unpack_from(D,  self._fcontents, 28)[0]                            # time between channel samples: 1/(sample rate throughput / total number of acquired channels)
@@ -83,33 +85,63 @@ class windaq(object):
         for i in range(0, self._annoSize):
             aTemp += struct.unpack_from('c', self._fcontents, aOffset + i)[0].decode("utf-8")
         self._annotations = aTemp.split('\x00')
-    
-    def data(self, channelNumber):
-        ''' return the data for the channel requested
-            data format is saved CH1tonChannels one sample at a time.
-            each sample is read as a 16bit word and then shifted to a 14bit value
-        '''
-        dataOffset = self._headSize + ((channelNumber -1) * 2)
-        data = []
-        for i in range(0, int(self.nSample)):
-            channelIndex = dataOffset + (2*self.nChannels * i)
-            if self._HiRes:
-                temp = struct.unpack_from("<h", self._fcontents, channelIndex)[0] * 0.25            # multiply by 0.25 for HiRes data
+       
+        # read event markers
+        evOffset = self._headSize + self._dataSize
+        e_i = 0
+        p_i=0
+        e_m=[]
+        
+        while p_i < int(self._trailerSize/4):
+            pointer=struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0]
+            p_i+=1
+
+            if pointer>=0:
+                time_stamp = (struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0])
+                p_i+=1
             else:
-                temp = struct.unpack_from("<h", self._fcontents, channelIndex)[0] >> 2              # bit shift by two for normal data
-            
-            temp2 = self.calScaling[channelNumber-1]*temp + self.calIntercept[channelNumber-1]
-            data.append(temp2)
-        
-        return data
+                if e_i>0:
+                    last_ts = e_m[e_i-1][1]
+                    last_p = e_m[e_i-1][0]
+                else:
+                    last_ts = 0.0
+                    last_p = 0
+
+                time_stamp = (abs(pointer)-last_p)*self.timeStep + last_ts;
+
+            pnext = struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0]
+            if pnext <= -1*(self._dataSize/(2*self.nChannels)):
+                cp=pnext&2147483647
+
+                cOffset = self._headSize + self._dataSize + self._trailerSize + cp
+                comment = ''
+                for i in range(0, 128):
+                    ch = struct.unpack_from('c', self._fcontents, cOffset + i)[0].decode("utf-8",errors='ignore')
+                    if ch=='\x00':
+                        break
+                    comment+=ch
+                p_i+=1
+            else:
+                comment=""
+
+            e_m.append((abs(pointer),time_stamp,comment))
+            e_i+=1
+        self.event_markers = e_m
     
-    def time(self):
-        ''' return time '''
-        t = []
-        for i in range(0, int(self.nSample)):
-            t.append(self.timeStep * i)
-        
-        return t
+        #read data
+        dataOffset = self._headSize 
+        data=np.frombuffer(self._fcontents[dataOffset:],dtype=np.int16,count=int(self.nChannels*self.nSample))
+        data=np.right_shift(data,2)
+        data=np.reshape(data.astype(np.float),(int(self.nChannels),int(self.nSample)),order='F')
+        data=np.reshape(self.calScaling,(self.nChannels,1))*data+np.reshape(self.calIntercept,(self.nChannels,1))
+
+        time = np.arange(0,int(self.nSample))*self.timeStep
+
+        cols = self._annotations[:self.nChannels]
+        cols.insert(0,'time')
+        cols = self._annotations[:self.nChannels]
+        cols.insert(0,'time')
+        self.df = pd.DataFrame(data=np.vstack([time,data]).T,columns=cols)
     
     def unit(self, channelNumber):
         ''' return unit of requested channel '''
@@ -120,7 +152,9 @@ class windaq(object):
         ''' Was getting \x00 in the unit string after decodeing, lets remove that and whitespace '''
         unit.replace('\x00', '').strip()
         return unit
-    
-    def chAnnotation(self, channelNumber):
-        ''' return user annotation of requested channel '''
-        return self._annotations[channelNumber-1]
+
+if __name__ == "__main__":
+
+    wf=windaq('AUTO.WDQ')
+    import IPython; IPython.embed()
+    pass
