@@ -33,28 +33,28 @@ class windaq(object):
         
         ''' Open file as binary '''
         with open(filename, 'rb') as self._file:
-            self._fcontents = self._file.read()
+            _fcontents = self._file.read()
         
         ''' Read Header Info '''
-        if (struct.unpack_from(B, self._fcontents, 1)[0]):                                              # max channels >= 144
-            self.nChannels      = int(struct.unpack_from(B, self._fcontents, 0)[0])                        # number of channels is element 1
+        if (struct.unpack_from(B, _fcontents, 1)[0]):                                              # max channels >= 144
+            self.nChannels      = int(struct.unpack_from(B, _fcontents, 0)[0])                        # number of channels is element 1
         else:
-            self.nChannels      = int(struct.unpack_from(B, self._fcontents, 0)[0]) & 31                   # number of channels is element 1 mask bit 5
+            self.nChannels      = int(struct.unpack_from(B, _fcontents, 0)[0]) & 31                   # number of channels is element 1 mask bit 5
         
-        self._hChannels     = struct.unpack_from(B,  self._fcontents, 4)[0]                             # offset in bytes from BOF to header channel info tables
-        self._hChannelSize  = struct.unpack_from(B,  self._fcontents, 5)[0]                             # number of bytes in each channel info entry
-        self._headSize      = struct.unpack_from(I,  self._fcontents, 6)[0]                             # number of bytes in data file header
-        self._dataSize      = struct.unpack_from(UL, self._fcontents, 8)[0]                             # number of ADC data bytes in file excluding header
+        self._hChannels     = struct.unpack_from(B,  _fcontents, 4)[0]                             # offset in bytes from BOF to header channel info tables
+        self._hChannelSize  = struct.unpack_from(B,  _fcontents, 5)[0]                             # number of bytes in each channel info entry
+        self._headSize      = struct.unpack_from(I,  _fcontents, 6)[0]                             # number of bytes in data file header
+        self._dataSize      = struct.unpack_from(UL, _fcontents, 8)[0]                             # number of ADC data bytes in file excluding header
         self.nSample        = int(self._dataSize/(2*self.nChannels))                                       # number of samples per channel
-        self._trailerSize   = struct.unpack_from(UL, self._fcontents,12)[0]                             # total number of event marker, time and date stamp, and event marker commet pointer bytes in trailer
-        self._annoSize      = struct.unpack_from(UI, self._fcontents, 16)[0]                            # toatl number of usr annotation bytes including 1 null per channel
-        self.timeStep       = struct.unpack_from(D,  self._fcontents, 28)[0]                            # time between channel samples: 1/(sample rate throughput / total number of acquired channels)
-        e14                 = struct.unpack_from(L,  self._fcontents, 36)[0]                            # time file was opened by acquisition: total number of seconds since jan 1 1970
-        e15                 = struct.unpack_from(L,  self._fcontents, 40)[0]                            # time file was written by acquisition: total number of seconds since jan 1 1970
+        self._trailerSize   = struct.unpack_from(UL, _fcontents,12)[0]                             # total number of event marker, time and date stamp, and event marker commet pointer bytes in trailer
+        self._annoSize      = struct.unpack_from(UI, _fcontents, 16)[0]                            # toatl number of usr annotation bytes including 1 null per channel
+        self.timeStep       = struct.unpack_from(D,  _fcontents, 28)[0]                            # time between channel samples: 1/(sample rate throughput / total number of acquired channels)
+        e14                 = struct.unpack_from(L,  _fcontents, 36)[0]                            # time file was opened by acquisition: total number of seconds since jan 1 1970
+        e15                 = struct.unpack_from(L,  _fcontents, 40)[0]                            # time file was written by acquisition: total number of seconds since jan 1 1970
         self.fileCreated    = datetime.datetime.fromtimestamp(e14).strftime('%Y-%m-%d %H:%M:%S')        # datetime format of time file was opened by acquisition
         self.fileWritten    = datetime.datetime.fromtimestamp(e15).strftime('%Y-%m-%d %H:%M:%S')        # datetime format of time file was written by acquisition
-        self._packed        = ((struct.unpack_from(UI, self._fcontents, 100)[0]) & 16384) >> 14         # bit 14 of element 27 indicates packed file. bitwise & e27 with 16384 to mask all bits but 14 and then shift to 0 bit place
-        self._HiRes         = ((struct.unpack_from(UI, self._fcontents, 100)[0]) & 1)                   # bit 1 of element 27 indicates a HiRes file with 16-bit data
+        self._packed        = ((struct.unpack_from(UI, _fcontents, 100)[0]) & 16384) >> 14         # bit 14 of element 27 indicates packed file. bitwise & e27 with 16384 to mask all bits but 14 and then shift to 0 bit place
+        self._HiRes         = ((struct.unpack_from(UI, _fcontents, 100)[0]) & 1)                   # bit 1 of element 27 indicates a HiRes file with 16-bit data
     
         ''' read channel info '''
         self.scalingSlope       = []
@@ -67,23 +67,23 @@ class windaq(object):
         
         for channel in range(0,self.nChannels):
             channelOffset = self._hChannels + (self._hChannelSize * channel)                                        # calculate channel header offset from beginging of file, each channel header size is defined in _hChannelSize
-            self.scalingSlope.append(struct.unpack_from(F, self._fcontents, channelOffset)[0])                      # scaling slope (m) applied to the waveform to scale it within the display window
-            self.scalingIntercept.append(struct.unpack_from(F,self._fcontents, channelOffset + 4)[0])               # scaling intercept (b) applied to the waveform to scale it withing the display window
-            self.calScaling.append(struct.unpack_from(D, self._fcontents, channelOffset + 4 + 4)[0])                # calibration scaling factor (m) for waveforem vale dispaly
-            self.calIntercept.append(struct.unpack_from(D, self._fcontents, channelOffset + 4 + 4 + 8)[0])          # calibration intercept factor (b) for waveform value display
-            self.engUnits.append(struct.unpack_from("cccccc", self._fcontents, channelOffset + 4 + 4 + 8 + 8))      # engineering units tag for calibrated waveform, only 4 bits are used last two are null
+            self.scalingSlope.append(struct.unpack_from(F, _fcontents, channelOffset)[0])                      # scaling slope (m) applied to the waveform to scale it within the display window
+            self.scalingIntercept.append(struct.unpack_from(F,_fcontents, channelOffset + 4)[0])               # scaling intercept (b) applied to the waveform to scale it withing the display window
+            self.calScaling.append(struct.unpack_from(D, _fcontents, channelOffset + 4 + 4)[0])                # calibration scaling factor (m) for waveforem vale dispaly
+            self.calIntercept.append(struct.unpack_from(D, _fcontents, channelOffset + 4 + 4 + 8)[0])          # calibration intercept factor (b) for waveform value display
+            self.engUnits.append(struct.unpack_from("cccccc", _fcontents, channelOffset + 4 + 4 + 8 + 8))      # engineering units tag for calibrated waveform, only 4 bits are used last two are null
             
             if self._packed:                                                                                        #  if file is packed then item 7 is the sample rate divisor
-                self.sampleRateDivisor.append(struct.unpack_from(B, self._fcontents, channelOffset + 4 + 4 + 8 + 8 + 6 + 1)[0])
+                self.sampleRateDivisor.append(struct.unpack_from(B, _fcontents, channelOffset + 4 + 4 + 8 + 8 + 6 + 1)[0])
             else:
                 self.sampleRateDivisor.append(1)
-            self.phyChannel.append(struct.unpack_from(B, self._fcontents, channelOffset + 4 + 4 + 8 + 8 + 6 + 1 + 1)[0])        # describes the physical channel number
+            self.phyChannel.append(struct.unpack_from(B, _fcontents, channelOffset + 4 + 4 + 8 + 8 + 6 + 1 + 1)[0])        # describes the physical channel number
         
         ''' read user annotations '''
         aOffset = self._headSize + self._dataSize + self._trailerSize
         aTemp = ''
         for i in range(0, self._annoSize):
-            aTemp += struct.unpack_from('c', self._fcontents, aOffset + i)[0].decode("utf-8")
+            aTemp += struct.unpack_from('c', _fcontents, aOffset + i)[0].decode("utf-8")
         self._annotations = aTemp.split('\x00')
        
         # read event markers
@@ -93,11 +93,11 @@ class windaq(object):
         e_m=[]
         
         while p_i < int(self._trailerSize/4):
-            pointer=struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0]
+            pointer=struct.unpack_from('i', _fcontents, evOffset + p_i*4)[0]
             p_i+=1
 
             if pointer>=0:
-                time_stamp = (struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0])
+                time_stamp = (struct.unpack_from('i', _fcontents, evOffset + p_i*4)[0])
                 p_i+=1
             else:
                 if e_i>0:
@@ -109,14 +109,14 @@ class windaq(object):
 
                 time_stamp = (abs(pointer)-last_p)*self.timeStep + last_ts;
 
-            pnext = struct.unpack_from('i', self._fcontents, evOffset + p_i*4)[0]
+            pnext = struct.unpack_from('i', _fcontents, evOffset + p_i*4)[0]
             if pnext <= -1*(self._dataSize/(2*self.nChannels)):
                 cp=pnext&2147483647
 
                 cOffset = self._headSize + self._dataSize + self._trailerSize + cp
                 comment = ''
                 for i in range(0, 128):
-                    ch = struct.unpack_from('c', self._fcontents, cOffset + i)[0].decode("utf-8",errors='ignore')
+                    ch = struct.unpack_from('c', _fcontents, cOffset + i)[0].decode("utf-8",errors='ignore')
                     if ch=='\x00':
                         break
                     comment+=ch
@@ -130,7 +130,7 @@ class windaq(object):
     
         #read data
         dataOffset = self._headSize 
-        data=np.frombuffer(self._fcontents[dataOffset:],dtype=np.int16,count=int(self.nChannels*self.nSample))
+        data=np.frombuffer(_fcontents[dataOffset:],dtype=np.int16,count=int(self.nChannels*self.nSample))
         data=np.right_shift(data,2)
         data=np.reshape(data.astype(np.float),(int(self.nChannels),int(self.nSample)),order='F')
         data=np.reshape(self.calScaling,(self.nChannels,1))*data+np.reshape(self.calIntercept,(self.nChannels,1))
