@@ -1,3 +1,5 @@
 *.pdf
 *.pyc
 *.json
+__pychache__
+.ipynb_checkpoints
