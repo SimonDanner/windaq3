@@ -139,8 +139,7 @@ class windaq(object):
 
         cols = self._annotations[:self.nChannels]
         cols.insert(0,'time')
-        cols = self._annotations[:self.nChannels]
-        cols.insert(0,'time')
+        cols = [c.replace(' ','_') for c in cols]
         self.df = pd.DataFrame(data=np.vstack([time,data]).T,columns=cols)
     
     def unit(self, channelNumber):
